@@ -1,4 +1,4 @@
-#/bin/sh
+#!/bin/sh
 
 ssh_private_key="$HOME/.ssh/id_rsa"
 ssh_public_key="$HOME/.ssh/id_rsa.pub"
@@ -14,7 +14,7 @@ if [ ! -f $ssh_private_key ] || [ ! -f $ssh_public_key ]; then
     echo "$HOME/.ssh/id_rsa not found"
     read -p "Do you want to generate a new RSA keypair ? (Y/N)" -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    if [ ! $REPLY =~ ^[Yy]$ ]; then
         ssh-keygen -t rsa -f $HOME/.ssh/id_rsa -N ""
         echo
         echo "RSA keypair generated"
@@ -43,7 +43,8 @@ subnet_id=$(oci compute instance list-vnics --instance-id $1 | jq -r '.data[0]."
 get_subnet=$(oci network subnet get --subnet-id $subnet_id)
 subnet_name=$(echo $get_subnet | jq -r '.data."display-name"')
 subnet_compartment_id=$(echo $get_subnet | jq -r '.data."compartment-id"')
-bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'select (.data[]."target-subnet-id" == $SUBNET_ID) | select (.data[]."lifecycle-state" == "ACTIVE") | .data[0].id')
+##TODO check jq to have only one result with active lifecycle
+bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaa3tfkwqyirfhhznrdadudjno3cqohlmnmrc66ka5gbptkuadk5aca" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
 
 if [ -z "$bastion_id" ]
 then
@@ -58,13 +59,13 @@ then
     fi
     echo "Creating Bastion QuickBastion$subnet_name..."
     oci bastion bastion create --bastion-type "standard" -c $subnet_compartment_id --target-subnet-id $subnet_id --name "QuickBastion$subnet_name" --client-cidr-list '["0.0.0.0/0"]' --wait-for-state "SUCCEEDED" | jq -r '.data.id'
-    bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'select (.data[]."target-subnet-id" == $SUBNET_ID) | select (.data[]."lifecycle-state" == "ACTIVE") | .data[0].id')
+    bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id" == $SUBNET_ID)|.id)')
 fi
 
 echo "Bastion service found."
 echo "Creating session..."
 instance_ip=$(oci compute instance list-vnics --instance-id $1 | jq -r '.data[]."private-ip"')
-session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$1 --target-private-ip=$instance_ip --session-ttl $session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
+session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$1 --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
 ssh_command=$(oci bastion session get --session-id $session_id | jq -r '.data."ssh-metadata".command')
 ssh_command=$(sed 's=<privateKey>='"$ssh_private_key"'=g' <<< $ssh_command)
 echo

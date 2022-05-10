@@ -14,7 +14,7 @@ if [ ! -f $ssh_private_key ] || [ ! -f $ssh_public_key ]; then
     echo "$HOME/.ssh/id_rsa not found"
     read -p "Do you want to generate a new RSA keypair ? (Y/N)" -n 1 -r
     echo
-    if [ ! $REPLY =~ ^[Yy]$ ]; then
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
         ssh-keygen -t rsa -f $HOME/.ssh/id_rsa -N ""
         echo
         echo "RSA keypair generated"

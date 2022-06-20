@@ -44,7 +44,7 @@ subnet_id=$(oci compute instance list-vnics --instance-id $1 | jq -r '.data[0]."
 get_subnet=$(oci network subnet get --subnet-id $subnet_id)
 subnet_name=$(echo $get_subnet | jq -r '.data."display-name"')
 subnet_compartment_id=$(echo $get_subnet | jq -r '.data."compartment-id"')
-bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "ocid1.subnet.oc1.eu-frankfurt-1.aaaaaaaa3tfkwqyirfhhznrdadudjno3cqohlmnmrc66ka5gbptkuadk5aca" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
+bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
 
 if [ -z "$bastion_id" ]
 then

@@ -5,6 +5,7 @@ Here is a small script to automate Bastion session creation.
 ## Requirements
 
 You need to have OCI-CLI installed and configured on your computer.
+You also need to install jq package.
 Or you can use OCI Cloud Shell which already have all the prerequisites.
 
 You need also to have at least the following IAM rights.

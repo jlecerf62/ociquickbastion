@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/bin/bash
 
 ssh_private_key="$HOME/.ssh/id_rsa"
 ssh_public_key="$HOME/.ssh/id_rsa.pub"
 bastion_id=""
 is_agent_enabled=""
-session_ttl="3600"
+session_ttl="10800"
 target_port="22"
 target_os_username="opc"
 
@@ -27,8 +27,8 @@ fi
 echo
 echo "Detecting Bastion plugin state..."
 get_instance=$(oci compute instance get --instance-id $1)
-instance_name=$(echo $get_instance | jq -r '.data."display-name"')
-instance_compartment_id=$(echo $get_instance | jq -r '.data."compartment-id"')
+instance_name=$(echo -E $get_instance | jq -r '.data."display-name"')
+instance_compartment_id=$(echo -E $get_instance | jq -r '.data."compartment-id"')
 is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id $1 -c $instance_compartment_id --plugin-name Bastion | jq -r '.data|select(.status=="RUNNING")')
 
 if [ -z "$is_agent_enabled" ]
@@ -42,8 +42,8 @@ echo
 echo "Checking for existing Bastion service..."
 subnet_id=$(oci compute instance list-vnics --instance-id $1 | jq -r '.data[0]."subnet-id"')
 get_subnet=$(oci network subnet get --subnet-id $subnet_id)
-subnet_name=$(echo $get_subnet | jq -r '.data."display-name"')
-subnet_compartment_id=$(echo $get_subnet | jq -r '.data."compartment-id"')
+subnet_name=$(echo -E $get_subnet | jq -r '.data."display-name"')
+subnet_compartment_id=$(echo -E $get_subnet | jq -r '.data."compartment-id"')
 bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
 
 if [ -z "$bastion_id" ]

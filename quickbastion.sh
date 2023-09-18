@@ -7,6 +7,49 @@ is_agent_enabled=""
 session_ttl="10800"
 target_port="22"
 target_os_username="opc"
+connection_mode="ssh"
+instance_ip=""
+ocid=""
+OPTIND=1 
+
+Help()
+{
+   # Display Help
+   echo "Create OCI BASTION session."
+   echo
+   echo "Syntax: quickbastion.sh [-h|i|p|u|k]"
+   echo "options:"
+   echo "h     Print this Help."
+   echo "i     Instance IP."
+   echo "p     Remote tcp port"
+   echo "u     Remote username"
+   echo
+}
+
+while getopts "hi:p:u:" option; do
+   case $option in
+      h) # display Help
+         Help
+         exit;;
+      i) # instance IP for port forwarding
+         instance_ip=$OPTARG
+         connection_mode="pfwd";;
+      p) # remote port for port forwarding
+         target_port=$OPTARG
+         connection_mode="pfwd";;
+      u) # username
+         target_os_username=$OPTARG;;
+      :)
+         echo "Option $OPTARG required argument"
+         exit;;
+     \?) # Invalid option
+         echo "Error: Invalid option"
+         exit;;
+   esac
+done
+shift "$((OPTIND-1))"
+ocid=$@
+echo $ocid
 
 echo
 echo "Searching for SSH key..."
@@ -24,23 +67,25 @@ else
     echo
 fi
 
-echo
-echo "Detecting Bastion plugin state..."
-get_instance=$(oci compute instance get --instance-id $1)
-instance_name=$(echo -E $get_instance | jq -r '.data."display-name"')
-instance_compartment_id=$(echo -E $get_instance | jq -r '.data."compartment-id"')
-is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id $1 -c $instance_compartment_id --plugin-name Bastion | jq -r '.data|select(.status=="RUNNING")')
-
-if [ -z "$is_agent_enabled" ]
-then
-    echo "Bastion plugin is not enabled on $instance_name."
-    echo "Please enable bastion plugin and retry later."
-    exit 1
+if [ $connection_mode = "ssh" ]; then
+    echo
+    echo "Detecting Bastion plugin state..."
+    get_instance=$(oci compute instance get --instance-id $ocid)
+    instance_name=$(echo -E $get_instance | jq -r '.data."display-name"')
+    instance_compartment_id=$(echo -E $get_instance | jq -r '.data."compartment-id"')
+    is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id $ocid -c $instance_compartment_id --plugin-name Bastion | jq -r '.data|select(.status=="RUNNING")')
+    if [ -z "$is_agent_enabled" ]; then
+        echo "Bastion plugin is not enabled on $instance_name."
+        echo "Please enable bastion plugin and retry later."
+        exit 1
+    else
+        echo "Bastion plugin is in RUNNING state on instance $instance_name."
+        echo
+    fi
 fi
-echo "Bastion plugin is in RUNNING state on instance $instance_name."
-echo 
+
 echo "Checking for existing Bastion service..."
-subnet_id=$(oci compute instance list-vnics --instance-id $1 | jq -r '.data[0]."subnet-id"')
+subnet_id=$(oci compute instance list-vnics --instance-id $ocid | jq -r '.data[0]."subnet-id"')
 get_subnet=$(oci network subnet get --subnet-id $subnet_id)
 subnet_name=$(echo -E $get_subnet | jq -r '.data."display-name"')
 subnet_compartment_id=$(echo -E $get_subnet | jq -r '.data."compartment-id"')
@@ -65,9 +110,16 @@ fi
 
 echo "Bastion service found."
 echo
+
+
 echo "Creating session... Please wait, it can take up to 2 minutes..."
-instance_ip=$(oci compute instance list-vnics --instance-id $1 | jq -r '.data[]."private-ip"')
-session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$1 --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
+instance_ip=$(oci compute instance list-vnics --instance-id $ocid | jq -r '.data[]."private-ip"')
+if [ $connection_mode = "pfwd" ]
+then
+    session_id=$(oci bastion session create-port-forwarding --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-port=$target_port --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
+else
+    session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$ocid --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
+fi
 ssh_command=$(oci bastion session get --session-id $session_id | jq -r '.data."ssh-metadata".command')
 ssh_command=$(sed 's=<privateKey>='"$ssh_private_key"'=g' <<< $ssh_command)
 echo "Session has been created. Session Lifetime is $session_ttl seconds"

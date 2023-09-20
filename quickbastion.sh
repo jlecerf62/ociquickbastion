@@ -10,7 +10,8 @@ target_os_username="opc"
 connection_mode="ssh"
 instance_ip=""
 ocid=""
-OPTIND=1 
+OPTIND=1
+profile="DEFAULT" 
 
 Help()
 {
@@ -21,12 +22,12 @@ Help()
    echo "options:"
    echo "h     Print this Help."
    echo "i     Instance IP."
-   echo "p     Remote tcp port"
+   echo "r     Remote tcp port"
    echo "u     Remote username"
-   echo
+   echo "p     OCI-CLI config profile"
 }
 
-while getopts "hi:p:u:" option; do
+while getopts "hr:i:p:u:" option; do
    case $option in
       h) # display Help
          Help
@@ -34,11 +35,13 @@ while getopts "hi:p:u:" option; do
       i) # instance IP for port forwarding
          instance_ip=$OPTARG
          connection_mode="pfwd";;
-      p) # remote port for port forwarding
+      r) # remote port for port forwarding
          target_port=$OPTARG
          connection_mode="pfwd";;
       u) # username
          target_os_username=$OPTARG;;
+      p) # OCI-CLI config profile
+         profile=$OPTARG;;
       :)
          echo "Option $OPTARG required argument"
          exit;;
@@ -70,10 +73,10 @@ fi
 if [ $connection_mode = "ssh" ]; then
     echo
     echo "Detecting Bastion plugin state..."
-    get_instance=$(oci compute instance get --instance-id $ocid)
+    get_instance=$(oci compute instance get --instance-id $ocid --profile $profile)
     instance_name=$(echo -E $get_instance | jq -r '.data."display-name"')
     instance_compartment_id=$(echo -E $get_instance | jq -r '.data."compartment-id"')
-    is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id $ocid -c $instance_compartment_id --plugin-name Bastion | jq -r '.data|select(.status=="RUNNING")')
+    is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id $ocid -c $instance_compartment_id --plugin-name Bastion --profile $profile | jq -r '.data|select(.status=="RUNNING")')
     if [ -z "$is_agent_enabled" ]; then
         echo "Bastion plugin is not enabled on $instance_name."
         echo "Please enable bastion plugin and retry later."
@@ -85,11 +88,11 @@ if [ $connection_mode = "ssh" ]; then
 fi
 
 echo "Checking for existing Bastion service..."
-subnet_id=$(oci compute instance list-vnics --instance-id $ocid | jq -r '.data[0]."subnet-id"')
-get_subnet=$(oci network subnet get --subnet-id $subnet_id)
+subnet_id=$(oci compute instance list-vnics --instance-id $ocid --profile $profile | jq -r '.data[0]."subnet-id"')
+get_subnet=$(oci network subnet get --subnet-id $subnet_id --profile $profile)
 subnet_name=$(echo -E $get_subnet | jq -r '.data."display-name"')
 subnet_compartment_id=$(echo -E $get_subnet | jq -r '.data."compartment-id"')
-bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
+bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all --profile $profile | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
 
 if [ -z "$bastion_id" ]
 then
@@ -104,8 +107,8 @@ then
     fi
     echo 
     echo "Creating Bastion QuickBastion$subnet_name... Please wait, it can take up to 2 minutes..."
-    oci bastion bastion create --bastion-type "standard" -c $subnet_compartment_id --target-subnet-id $subnet_id --name "QuickBastion$subnet_name" --client-cidr-list '["0.0.0.0/0"]' --wait-for-state "SUCCEEDED" | jq -r '.data.id'
-    bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id" == $SUBNET_ID)|.id)')
+    oci bastion bastion create --bastion-type "standard" -c $subnet_compartment_id --target-subnet-id $subnet_id --name "QuickBastion$subnet_name" --client-cidr-list '["0.0.0.0/0"]' --wait-for-state "SUCCEEDED" --profile $profile | jq -r '.data.id'
+    bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all --profile $profile | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id" == $SUBNET_ID)|.id)')
 fi
 
 echo "Bastion service found."
@@ -113,14 +116,14 @@ echo
 
 
 echo "Creating session... Please wait, it can take up to 2 minutes..."
-instance_ip=$(oci compute instance list-vnics --instance-id $ocid | jq -r '.data[]."private-ip"')
+instance_ip=$(oci compute instance list-vnics --instance-id $ocid --profile $profile | jq -r '.data[]."private-ip"')
 if [ $connection_mode = "pfwd" ]
 then
-    session_id=$(oci bastion session create-port-forwarding --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-port=$target_port --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
+    session_id=$(oci bastion session create-port-forwarding --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-port=$target_port --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" --profile $profile | jq -r '.data.resources[].identifier')
 else
-    session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$ocid --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" | jq -r '.data.resources[].identifier')
+    session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$ocid --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" --profile $profile | jq -r '.data.resources[].identifier')
 fi
-ssh_command=$(oci bastion session get --session-id $session_id | jq -r '.data."ssh-metadata".command')
+ssh_command=$(oci bastion session get --session-id $session_id --profile $profile | jq -r '.data."ssh-metadata".command')
 ssh_command=$(sed 's=<privateKey>='"$ssh_private_key"'=g' <<< $ssh_command)
 echo "Session has been created. Session Lifetime is $session_ttl seconds"
 echo

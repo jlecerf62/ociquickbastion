@@ -1,4 +1,5 @@
 # OCI quickbastion
+
 OCI Bastion service can sometimes be difficult and long to setup.
 Here is a small script to automate Bastion session creation.
 
@@ -22,7 +23,14 @@ You need also to have at least the following IAM rights.
 
 ## Usage
 
-        ./quickbastion.sh <instance_ocid>
+        ./quickbastion.sh [-h|i|p|u|r] <instance ocid>
+
+        options:
+        -h     Print this Help.
+        -i     Instance IP (port-forwarding).
+        -r     Remote tcp port (port-forwarding).
+        -u     Remote username (default opc).
+        -p     OCI-CLI config profile (optional).
 
 ## Example
 

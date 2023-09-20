@@ -1,5 +1,5 @@
 #!/bin/bash
-
+#variables
 ssh_private_key="$HOME/.ssh/id_rsa"
 ssh_public_key="$HOME/.ssh/id_rsa.pub"
 bastion_id=""
@@ -18,14 +18,18 @@ Help()
    # Display Help
    echo "Create OCI BASTION session."
    echo
-   echo "Syntax: quickbastion.sh [-h|i|p|u|k]"
+   echo "./quickbastion.sh [-h|i|p|u|r] <instance ocid>"
+   echo
    echo "options:"
-   echo "h     Print this Help."
-   echo "i     Instance IP."
-   echo "r     Remote tcp port"
-   echo "u     Remote username"
-   echo "p     OCI-CLI config profile"
+   echo "-h     Print this Help."
+   echo "-i     Instance IP (port-forwarding)."
+   echo "-r     Remote tcp port (port-forwarding)."
+   echo "-u     Remote username (default opc)."
+   echo "-p     OCI-CLI config profile (optional)."
+   exit 1
 }
+
+[[ $# -lt 1 ]] && Help 
 
 while getopts "hr:i:p:u:" option; do
    case $option in
@@ -43,10 +47,10 @@ while getopts "hr:i:p:u:" option; do
       p) # OCI-CLI config profile
          profile=$OPTARG;;
       :)
-         echo "Option $OPTARG required argument"
+         echo "Option $OPTARG required argument" >&2 
          exit;;
      \?) # Invalid option
-         echo "Error: Invalid option"
+         echo "Error: Invalid option" >&2
          exit;;
    esac
 done

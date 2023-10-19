@@ -6,6 +6,7 @@ bastion_id=""
 is_agent_enabled=""
 session_ttl="10800"
 target_port="22"
+local_port=""
 target_os_username="opc"
 connection_mode="ssh"
 instance_ip=""
@@ -26,12 +27,13 @@ Help()
    echo "-r     Remote tcp port (port-forwarding)."
    echo "-u     Remote username (default opc)."
    echo "-p     OCI-CLI config profile (optional)."
+   echo "-l     local tcp port (port-forwarding)"
    exit 1
 }
 
 [[ $# -lt 1 ]] && Help 
 
-while getopts "hr:i:p:u:" option; do
+while getopts "hr:i:p:u:l:" option; do
    case $option in
       h) # display Help
          Help
@@ -46,6 +48,8 @@ while getopts "hr:i:p:u:" option; do
          target_os_username=$OPTARG;;
       p) # OCI-CLI config profile
          profile=$OPTARG;;
+      l) # local port for port forwarding
+         local_port=$OPTARG;;
       :)
          echo "Option $OPTARG required argument" >&2 
          exit;;
@@ -129,6 +133,7 @@ else
 fi
 ssh_command=$(oci bastion session get --session-id $session_id --profile $profile | jq -r '.data."ssh-metadata".command')
 ssh_command=$(sed 's=<privateKey>='"$ssh_private_key"'=g' <<< $ssh_command)
+ssh_command=$(sed 's=<localPort>='"$local_port"'=g' <<< $ssh_command)
 echo "Session has been created. Session Lifetime is $session_ttl seconds"
 echo
 echo "Type the following SSH command to connect instance: "

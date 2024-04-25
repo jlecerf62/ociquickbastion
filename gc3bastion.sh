@@ -10,10 +10,11 @@ local_port=""
 target_os_username="opc"
 connection_mode="ssh"
 instance_ip=""
-ocid=""
+instance_ocid=""
 OPTIND=1
 profile="GC3" 
 proxy_list='["141.143.193.64/27","148.87.23.0/27","137.254.7.160/27","129.157.69.32/27","209.17.40.32/27","209.17.37.96/27","198.49.164.160/27","141.143.213.32/27","196.15.23.0/27","192.188.170.80/28","202.45.129.176/28","202.92.67.176/29"]'
+
 
 Help()
 {
@@ -38,6 +39,7 @@ while getopts "hr:i:p:u:l:" option; do
    case $option in
       h) # display Help
          Help
+         # shellcheck disable=SC2317
          exit;;
       i) # instance IP for port forwarding
          instance_ip=$OPTARG
@@ -60,17 +62,19 @@ while getopts "hr:i:p:u:l:" option; do
    esac
 done
 shift "$((OPTIND-1))"
-ocid=$@
-echo $ocid
+if [ "$*" ]
+then
+    instance_ocid=$*
+fi
 
 echo
 echo "Searching for SSH key..."
-if [ ! -f $ssh_private_key ] || [ ! -f $ssh_public_key ]; then
+if [ ! -f "$ssh_private_key" ] || [ ! -f "$ssh_public_key" ]; then
     echo "$HOME/.ssh/id_rsa not found"
     read -p "Do you want to generate a new RSA keypair ? (Y/N)" -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
-        ssh-keygen -t rsa -f $HOME/.ssh/id_rsa -N ""
+        ssh-keygen -t rsa -f "$HOME"/.ssh/id_rsa -N ""
         echo
         echo "RSA keypair generated"
     fi
@@ -82,10 +86,10 @@ fi
 if [ $connection_mode = "ssh" ]; then
     echo
     echo "Detecting Bastion plugin state..."
-    get_instance=$(oci compute instance get --instance-id $ocid --profile $profile)
-    instance_name=$(echo -E $get_instance | jq -r '.data."display-name"')
-    instance_compartment_id=$(echo -E $get_instance | jq -r '.data."compartment-id"')
-    is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id $ocid -c $instance_compartment_id --plugin-name Bastion --profile $profile | jq -r '.data|select(.status=="RUNNING")')
+    get_instance=$(oci compute instance get --instance-id "$instance_ocid" --profile "$profile")
+    instance_name=$(echo -E "$get_instance" | jq -r '.data."display-name"')
+    instance_compartment_id=$(echo -E "$get_instance" | jq -r '.data."compartment-id"')
+    is_agent_enabled=$(oci instance-agent plugin get --instanceagent-id "$instance_ocid" -c "$instance_compartment_id" --plugin-name Bastion --profile "$profile" | jq -r '.data|select(.status=="RUNNING")')
     if [ -z "$is_agent_enabled" ]; then
         echo "Bastion plugin is not enabled on $instance_name."
         echo "Please enable bastion plugin and retry later."
@@ -95,13 +99,24 @@ if [ $connection_mode = "ssh" ]; then
         echo
     fi
 fi
-
 echo "Checking for existing Bastion service..."
-subnet_id=$(oci compute instance list-vnics --instance-id $ocid --profile $profile | jq -r '.data[0]."subnet-id"')
-get_subnet=$(oci network subnet get --subnet-id $subnet_id --profile $profile)
-subnet_name=$(echo -E $get_subnet | jq -r '.data."display-name"')
-subnet_compartment_id=$(echo -E $get_subnet | jq -r '.data."compartment-id"')
-bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all --profile $profile | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
+if [ -z "$instance_ocid" ]
+then
+    privateip_ocid=$(oci search resource free-text-search --text "$instance_ip" --profile "$profile" | jq -r '.data.items[] | select (.identifier | test("^ocid1.privateip")) | .identifier')
+    ## TODO: check that cmd return only 1 element
+    subnet_id=$(oci network private-ip get --private-ip-id "$privateip_ocid" --profile "$profile" | jq -r '.data."subnet-id"')
+else
+    subnet_id=$(oci compute instance list-vnics --instance-id "$instance_ocid" --profile "$profile" | jq -r '.data[0]."subnet-id"')
+fi
+get_subnet=$(oci network subnet get --subnet-id "$subnet_id" --profile "$profile")
+subnet_name=$(echo -E "$get_subnet" | jq -r '.data."display-name"')
+subnet_compartment_id=$(echo -E "$get_subnet" | jq -r '.data."compartment-id"')
+vcn_id=$(echo -E "$get_subnet" | jq -r '.data."vcn-id"')
+bastion_id=$(oci bastion bastion list -c "$subnet_compartment_id" --all --profile "$profile" | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id"==$SUBNET_ID)|.id)')
+if [ -z "$bastion_id" ]
+then
+    bastion_id=$(oci bastion bastion list -c "$subnet_compartment_id" --all --profile "$profile" | jq -r --arg VCN_ID "$vcn_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-vcn-id"==$VCN_ID)|.id)')
+fi
 
 if [ -z "$bastion_id" ]
 then
@@ -115,24 +130,27 @@ then
         exit 1
     fi
     echo 
+    ## TODO: check if bastion lenght reach max lenght name
     echo "Creating Bastion QuickBastion$subnet_name... Please wait, it can take up to 2 minutes..."
-    oci bastion bastion create --bastion-type "standard" -c $subnet_compartment_id --target-subnet-id $subnet_id --name "QuickBastion$subnet_name" --client-cidr-list $proxy_list  --wait-for-state "SUCCEEDED" --profile $profile | jq -r '.data.id'
-    bastion_id=$(oci bastion bastion list -c $subnet_compartment_id --all --profile $profile | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id" == $SUBNET_ID)|.id)')
+    oci bastion bastion create --bastion-type "standard" -c "$subnet_compartment_id" --target-subnet-id "$subnet_id" --name "QuickBastion$subnet_name" --client-cidr-list "$proxy_list" --wait-for-state "SUCCEEDED" --profile "$profile" | jq -r '.data.id'
+    bastion_id=$(oci bastion bastion list -c "$subnet_compartment_id" --all --profile "$profile" | jq -r --arg SUBNET_ID "$subnet_id" 'first(.data[]|select(."lifecycle-state" == "ACTIVE" and ."target-subnet-id" == $SUBNET_ID)|.id)')
 fi
-
 echo "Bastion service found."
 echo
 
 
 echo "Creating session... Please wait, it can take up to 2 minutes..."
-instance_ip=$(oci compute instance list-vnics --instance-id $ocid --profile $profile | jq -r '.data[]."private-ip"')
+if [ "$instance_ocid" ] && [ ! "$instance_ip" ]
+then
+    instance_ip=$(oci compute instance list-vnics --instance-id "$instance_ocid" --profile "$profile" | jq -r '.data[]."private-ip"')
+fi
 if [ $connection_mode = "pfwd" ]
 then
-    session_id=$(oci bastion session create-port-forwarding --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-port=$target_port --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" --profile $profile | jq -r '.data.resources[].identifier')
+    session_id=$(oci bastion session create-port-forwarding --bastion-id "$bastion_id" --ssh-public-key-file="$ssh_public_key" --target-port="$target_port" --target-private-ip="$instance_ip" --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" --profile "$profile" | jq -r '.data.resources[].identifier')
 else
-    session_id=$(oci bastion session create-managed-ssh --bastion-id $bastion_id --ssh-public-key-file=$ssh_public_key --target-os-username=$target_os_username --target-port=$target_port --target-resource-id=$ocid --target-private-ip=$instance_ip --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" --profile $profile | jq -r '.data.resources[].identifier')
+    session_id=$(oci bastion session create-managed-ssh --bastion-id "$bastion_id" --ssh-public-key-file="$ssh_public_key" --target-os-username="$target_os_username" --target-port="$target_port" --target-resource-id="$instance_ocid" --target-private-ip="$instance_ip" --session-ttl=$session_ttl --wait-for-state "SUCCEEDED" --profile "$profile" | jq -r '.data.resources[].identifier')
 fi
-bastion_user_name=$(oci bastion session get --session-id $session_id --profile $profile | jq -r '.data."bastion-user-name"')
+bastion_user_name=$(oci bastion session get --session-id "$session_id" --profile "$profile" | jq -r '.data."bastion-user-name"')
 echo "Session has been created. Session Lifetime is $session_ttl seconds"
 echo
 echo "Type the following SSH command to connect instance: "

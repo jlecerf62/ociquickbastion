@@ -48,7 +48,7 @@ Help() {
     cat << EOF
 Create OCI BASTION session.
 
-Usage: ./quickbastion.sh [-h|i|p|u|r] <instance ocid>
+Usage: ./quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
 
 Options:
     -h     Print this Help
@@ -59,7 +59,8 @@ Options:
     -l     Local tcp port (port-forwarding)
 
 Example:
-    ./quickbastion.sh -p PRODUCTION -u admin ocid1.instance.oc1...
+    ./quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
+    ./quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
 EOF
     exit 1
 }

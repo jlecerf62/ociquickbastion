@@ -11,11 +11,15 @@ You also need to install **jq** package.
 
 Or you can use OCI Cloud Shell which already have all the prerequisites.
 
-You need also to have at least the following IAM rights.
+You need also to have at least the following IAM permissions.
 
-        allow <group> to read instances in compartment <compartment>
-        allow <group> to read virtual-network-family in compartment <compartment>
-        allow <group> to manage bastion-family in compartment <compartment>
+        Allow group <group> to read virtual-network-family in compartment <compartment>
+        Allow group <group> to read instance-family in compartment <compartment>
+        Allow group <group> to inspect work-requests in tenancy
+        Allow group <group> to inspect compartments in tenancy
+        Allow group <group> to use bastion in compartment <compartment>
+        Allow group <group> to manage bastion-session in compartment <compartment>
+        Allow group <group> to read bastion in compartment <compartment>
 
 ## Installation
 
@@ -23,14 +27,19 @@ You need also to have at least the following IAM rights.
 
 ## Usage
 
-        ./quickbastion.sh [-h|i|p|u|r] <instance ocid>
+        Usage: ./quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
 
-        options:
-        -h     Print this Help.
-        -i     Instance IP (port-forwarding).
-        -r     Remote tcp port (port-forwarding).
-        -u     Remote username (default opc).
-        -p     OCI-CLI config profile (optional).
+        Options:
+        -h     Print this Help
+        -i     Instance IP (port-forwarding)
+        -r     Remote tcp port (port-forwarding)
+        -u     Remote username (default: opc)
+        -p     OCI-CLI config profile (default: DEFAULT)
+        -l     Local tcp port (port-forwarding)
+
+        Example:
+        ./quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
+        ./quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
 
 ## Example
 

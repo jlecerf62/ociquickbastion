@@ -129,7 +129,7 @@ create_bastion_service() {
     local subnet_id="$3"
     
     log "INFO" "Creating Bastion QuickBastion${subnet_name}..."
-    log "INFO" "This may take up to 2 minutes..."
+    log "INFO" "This may takes up to 2 minutes..."
     
     bastion_id=$(oci bastion bastion create \
         --bastion-type "standard" \
@@ -144,7 +144,7 @@ create_bastion_service() {
 }
 
 create_session() {
-    log "INFO" "Creating session... This may take up to 2 minutes..."
+    log "INFO" "Creating session... This may takes up to 2 minutes..."
     
     local session_id
     if [ "${connection_mode}" = "pfwd" ]; then

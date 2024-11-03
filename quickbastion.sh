@@ -15,8 +15,7 @@ readonly DEFAULT_OS_USERNAME="opc"
 readonly DEFAULT_PROFILE="DEFAULT"
 readonly DEFAULT_ALLOW_LIST='["0.0.0.0/0"]'
 readonly DEFAULT_FQDN_SOCKS="ENABLED"
-readonly DEFAULT_HTTP_PROXY="www-proxy-ams.nl.oracle.com"
-#readonly DEFAULT_HTTP_PROXY=""
+readonly DEFAULT_HTTP_PROXY=""
 
 # Variables
 ssh_private_key="${HOME}/.ssh/id_rsa"

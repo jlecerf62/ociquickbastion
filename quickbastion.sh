@@ -15,7 +15,8 @@ readonly DEFAULT_OS_USERNAME="opc"
 readonly DEFAULT_PROFILE="DEFAULT"
 readonly DEFAULT_ALLOW_LIST='["0.0.0.0/0"]'
 readonly DEFAULT_FQDN_SOCKS="ENABLED"
-readonly DEFAULT_HTTP_PROXY=""
+readonly DEFAULT_HTTP_PROXY="www-proxy-ams.nl.oracle.com"
+#readonly DEFAULT_HTTP_PROXY=""
 
 # Variables
 ssh_private_key="${HOME}/.ssh/id_rsa"
@@ -24,7 +25,7 @@ bastion_id=""
 is_agent_enabled=""
 session_ttl="${DEFAULT_SESSION_TTL}"
 target_port="${DEFAULT_TARGET_PORT}"
-local_port=""
+local_port="<local_port>"
 target_os_username="${DEFAULT_OS_USERNAME}"
 connection_mode="ssh"
 instance_ip=""
@@ -191,28 +192,70 @@ create_session() {
     region=$(echo -E "${session_id}" | awk -F '.' '{print $4}')
     log "SUCCESS" "Session has been created. Session lifetime is ${session_ttl} seconds"
     echo
-    echo "Type the following SSH command to connect instance: "
+    echo "Type the following SSH command to connect to bastion session: "
     echo
-    if [ $connection_mode = "pfwd" ]; then
-        if [ -z "$http_proxy" ]; then
-        echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-        else
-        echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-        fi
-    elif [ $connection_mode = "socks" ]; then
-        if [ -z "$http_proxy" ] ;then
-        echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-        else
-        echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-        fi
-    else
-        if [ -z "$http_proxy" ]; then
-        echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com\" -p 22 $bastion_user_name@$instance_ip"
-        else
-        echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %%h %%p'\" -p 22 $bastion_user_name@$instance_ip"
-        fi
-    fi
-    echo
+    # if [ $connection_mode = "pfwd" ]; then
+    #     if [ -z "$http_proxy" ]; then
+    #     echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+    #     else
+    #     echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+    #     fi
+    # elif [ $connection_mode = "socks" ]; then
+    #     if [ -z "$http_proxy" ] ;then
+    #     echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+    #     else
+    #     echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+    #     fi
+    # else
+    #     if [ -z "$http_proxy" ]; then
+    #     echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com\" -p 22 $bastion_user_name@$instance_ip"
+    #     else
+    #     echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %%h %%p'\" -p 22 $bastion_user_name@$instance_ip"
+    #     fi
+    # fi
+    # echo
+# Define base SSH command
+base_ssh_command="ssh -i $ssh_private_key"
+
+# Define proxy command prefix
+proxy_command_prefix=" -o 'ProxyCommand=nc -X connect -x "
+
+# Generate SSH command based on connection mode
+case $connection_mode in
+  pfwd)
+    ssh_command="$base_ssh_command -N -L $local_port:$instance_ip:$target_port"
+    ;;
+  socks)
+    ssh_command="$base_ssh_command -N -D 127.0.0.1:$local_port"
+    ;;
+  *)
+    ssh_command="$base_ssh_command -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com"
+    ;;
+esac
+
+# Add proxy settings if HTTP proxy is set
+if [ -n "$http_proxy" ]; then
+  ssh_command+="$proxy_command_prefix$http_proxy:80 %%h %%p'"
+fi
+
+# Append rest of the SSH command
+if [ "$connection_mode" = "pfwd" ] || [ "$connection_mode" = "socks" ] ; then
+    ssh_command+=" -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+else
+    ssh_command+="\" -p 22 $bastion_user_name@$instance_ip"
+fi
+
+# Print final SSH command
+echo "$ssh_command"
+
+# Special instructions for SOCKS mode
+if [ "$connection_mode" = "socks" ]; then
+  echo
+  echo "Then you can connect any resources in subnet using IP or FQDN using the following command:"
+  echo ""
+  echo "ssh -o 'ProxyCommand=nc -x connect -x 127.0.0.1:$local_port %h %p' -p 22 <username>@<IP or FQDN>:<port>"
+fi
+echo
 }
 
 main() {

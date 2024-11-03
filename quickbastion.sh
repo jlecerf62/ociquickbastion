@@ -13,8 +13,9 @@ readonly DEFAULT_SESSION_TTL=10800
 readonly DEFAULT_TARGET_PORT=22
 readonly DEFAULT_OS_USERNAME="opc"
 readonly DEFAULT_PROFILE="DEFAULT"
-readonly DEFAULT_PROXY_LIST='["0.0.0.0/0"]'
+readonly DEFAULT_ALLOW_LIST='["0.0.0.0/0"]'
 readonly DEFAULT_FQDN_SOCKS="ENABLED"
+readonly DEFAULT_HTTP_PROXY=""
 
 # Variables
 ssh_private_key="${HOME}/.ssh/id_rsa"
@@ -30,9 +31,9 @@ instance_ip=""
 instance_ocid=""
 subnet_id=""
 profile="${DEFAULT_PROFILE}"
-proxy_list="${DEFAULT_PROXY_LIST}"
+allow_list="${DEFAULT_ALLOW_LIST}"
 fqdn_socks="${DEFAULT_FQDN_SOCKS}"
-ssh_public_key_content=$(cat "${ssh_public_key}")
+http_proxy="${DEFAULT_HTTP_PROXY}"
 
 
 
@@ -54,7 +55,7 @@ Help() {
     cat << EOF
 Create OCI BASTION session.
 
-Usage: ./quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
+Usage: quickbastion.sh [-h|i|r|u|p|l|s] <instance ocid>
 
 Options:
     -h     Print this Help
@@ -66,8 +67,10 @@ Options:
     -s     Subnet ocid (SOCKS5 proxy)
 
 Example:
-    ./quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
-    ./quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
+    quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
+    quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
+    quickbastion.sh -p TENANT3 -l 4444 -s ocid1.subnet.oc1...
+
 EOF
     exit 1
 }
@@ -143,7 +146,7 @@ create_bastion_service() {
         -c "${subnet_compartment_id}" \
         --target-subnet-id "${subnet_id}" \
         --name "QuickBastion${subnet_name}" \
-        --client-cidr-list "${proxy_list}" \
+        --client-cidr-list "${allow_list}" \
         --dns-proxy-status "${fqdn_socks}" \
         --wait-for-state "SUCCEEDED" \
         --profile "${profile}" | jq -r '.data.id') || error_exit "Failed to create bastion service"
@@ -154,7 +157,8 @@ create_bastion_service() {
 create_session() {
     log "INFO" "Creating session... This may takes up to 2 minutes..."
     
-    local session_id
+    ssh_public_key_content=$(cat "${ssh_public_key}")
+    local session_id bastion_user_name region
     if [ "${connection_mode}" = "pfwd" ]; then
         session_id=$(oci bastion session create-port-forwarding \
             --bastion-id "${bastion_id}" \
@@ -164,7 +168,7 @@ create_session() {
             --session-ttl="${session_ttl}" \
             --wait-for-state "SUCCEEDED" \
             --profile "${profile}" | jq -r '.data.resources[].identifier') || error_exit "Failed to create port forwarding session"
-     elif [ "${connection_mode}" = "socks" ]; then
+    elif [ "${connection_mode}" = "socks" ]; then
         session_id=$(oci bastion session create-session-create-dynamic-port-forwarding-session-target-resource-details \
             --bastion-id "${bastion_id}" \
             --key-details '{"publicKeyContent":"'"$ssh_public_key_content"'"}' \
@@ -183,17 +187,32 @@ create_session() {
             --wait-for-state "SUCCEEDED" \
             --profile "${profile}" | jq -r '.data.resources[].identifier') || error_exit "Failed to create managed SSH session"
     fi
-    
-    local ssh_command
-    ssh_command=$(oci bastion session get --session-id "${session_id}" --profile "${profile}" | jq -r '.data."ssh-metadata".command') || error_exit "Failed to get session details"
-    ssh_command=$(sed 's=<privateKey>='"${ssh_private_key}"'=g' <<< "${ssh_command}")
-    ssh_command=$(sed 's=<localPort>='"${local_port}"'=g' <<< "${ssh_command}")
-    
-    log "SUCCESS" "Session has been created. Session Lifetime is ${session_ttl} seconds"
+    bastion_user_name=$(oci bastion session get --session-id "$session_id" --profile "$profile" | jq -r '.data."bastion-user-name"')
+    region=$(echo -E "${session_id}" | awk -F '.' '{print $4}')
+    log "SUCCESS" "Session has been created. Session lifetime is ${session_ttl} seconds"
     echo
     echo "Type the following SSH command to connect instance: "
-    echo 
-    echo "${ssh_command}"
+    echo
+    if [ $connection_mode = "pfwd" ]; then
+        if [ -z "$http_proxy" ]; then
+        echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+        else
+        echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+        fi
+    elif [ $connection_mode = "socks" ]; then
+        if [ -z "$http_proxy" ] ;then
+        echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+        else
+        echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
+        fi
+    else
+        if [ -z "$http_proxy" ]; then
+        echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com\" -p 22 $bastion_user_name@$instance_ip"
+        else
+        echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %%h %%p'\" -p 22 $bastion_user_name@$instance_ip"
+        fi
+    fi
+    echo
 }
 
 main() {

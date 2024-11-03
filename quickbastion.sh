@@ -14,6 +14,7 @@ readonly DEFAULT_TARGET_PORT=22
 readonly DEFAULT_OS_USERNAME="opc"
 readonly DEFAULT_PROFILE="DEFAULT"
 readonly DEFAULT_PROXY_LIST='["0.0.0.0/0"]'
+readonly DEFAULT_FQDN_SOCKS="ENABLED"
 
 # Variables
 ssh_private_key="${HOME}/.ssh/id_rsa"
@@ -27,8 +28,13 @@ target_os_username="${DEFAULT_OS_USERNAME}"
 connection_mode="ssh"
 instance_ip=""
 instance_ocid=""
+subnet_id=""
 profile="${DEFAULT_PROFILE}"
 proxy_list="${DEFAULT_PROXY_LIST}"
+fqdn_socks="${DEFAULT_FQDN_SOCKS}"
+ssh_public_key_content=$(cat "${ssh_public_key}")
+
+
 
 # Error handling function
 error_exit() {
@@ -52,11 +58,12 @@ Usage: ./quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
 
 Options:
     -h     Print this Help
-    -i     Instance IP (port-forwarding)
+    -i     Instance IP
     -r     Remote tcp port (port-forwarding)
     -u     Remote username (default: ${DEFAULT_OS_USERNAME})
     -p     OCI-CLI config profile (default: ${DEFAULT_PROFILE})
     -l     Local tcp port (port-forwarding)
+    -s     Subnet ocid (SOCKS5 proxy)
 
 Example:
     ./quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
@@ -137,6 +144,7 @@ create_bastion_service() {
         --target-subnet-id "${subnet_id}" \
         --name "QuickBastion${subnet_name}" \
         --client-cidr-list "${proxy_list}" \
+        --dns-proxy-status "${fqdn_socks}" \
         --wait-for-state "SUCCEEDED" \
         --profile "${profile}" | jq -r '.data.id') || error_exit "Failed to create bastion service"
         
@@ -156,6 +164,13 @@ create_session() {
             --session-ttl="${session_ttl}" \
             --wait-for-state "SUCCEEDED" \
             --profile "${profile}" | jq -r '.data.resources[].identifier') || error_exit "Failed to create port forwarding session"
+     elif [ "${connection_mode}" = "socks" ]; then
+        session_id=$(oci bastion session create-session-create-dynamic-port-forwarding-session-target-resource-details \
+            --bastion-id "${bastion_id}" \
+            --key-details '{"publicKeyContent":"'"$ssh_public_key_content"'"}' \
+            --session-ttl-in-seconds="${session_ttl}" \
+            --wait-for-state "SUCCEEDED" \
+            --profile "${profile}" | jq -r '.data.resources[].identifier') || error_exit "Failed to create SOCKS5 session"
     else
         session_id=$(oci bastion session create-managed-ssh \
             --bastion-id "${bastion_id}" \
@@ -186,16 +201,17 @@ main() {
     check_dependencies
 
     # Parse command line options
-    while getopts "hr:i:p:u:l:" option; do
+    while getopts "hr:i:p:u:l:s:" option; do
         case ${option} in
             h) Help ;;
-            i) instance_ip=$OPTARG
-               connection_mode="pfwd" ;;
+            i) instance_ip=$OPTARG ;;
             r) target_port=$OPTARG
                connection_mode="pfwd" ;;
             u) target_os_username=$OPTARG ;;
             p) profile=$OPTARG ;;
             l) local_port=$OPTARG ;;
+            s) subnet_id=$OPTARG
+               connection_mode="socks" ;;
             :) error_exit "Option -$OPTARG requires an argument" ;;
             ?) error_exit "Invalid option -$OPTARG" ;;
         esac
@@ -207,7 +223,7 @@ main() {
     fi
     
     # Validate required parameters
-    [ -z "${instance_ocid}" ] && [ -z "${instance_ip}" ] && error_exit "Either instance OCID or IP must be provided"
+    [ -z "${instance_ocid}" ] && [ -z "${instance_ip}" ] && [ -z "${subnet_id}" ] && error_exit "Either instance/subnet OCID or IP must be provided"
     
     # Main workflow
     check_ssh_keys
@@ -216,13 +232,13 @@ main() {
     log "INFO" "Checking for existing Bastion service..."
     
     # Get subnet information
-    local subnet_id privateip_ocid get_subnet subnet_name subnet_compartment_id vcn_id
-    if [ -z "${instance_ocid}" ]; then
+    local privateip_ocid get_subnet subnet_name subnet_compartment_id vcn_id
+    if [ -z "${instance_ocid}" ] && [ -z "${subnet_id}" ]; then
         privateip_ocid=$(oci search resource free-text-search --text "${instance_ip}" --profile "${profile}" | \
             jq -r '.data.items[] | select (.identifier | test("^ocid1.privateip")) | .identifier') || error_exit "Failed to find private IP"
         subnet_id=$(oci network private-ip get --private-ip-id "${privateip_ocid}" --profile "${profile}" | \
             jq -r '.data."subnet-id"') || error_exit "Failed to get subnet ID"
-    else
+    elif [ -z "${subnet_id}" ]; then
         subnet_id=$(oci compute instance list-vnics --instance-id "${instance_ocid}" --profile "${profile}" | \
             jq -r '.data[0]."subnet-id"') || error_exit "Failed to get subnet ID"
     fi

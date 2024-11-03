@@ -27,19 +27,21 @@ You need also to have at least the following IAM permissions.
 
 ## Usage
 
-        Usage: ./quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
+        Usage: quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
 
         Options:
         -h     Print this Help
-        -i     Instance IP (port-forwarding)
+        -i     Instance IP
         -r     Remote tcp port (port-forwarding)
-        -u     Remote username (default: opc)
-        -p     OCI-CLI config profile (default: DEFAULT)
+        -u     Remote username (default: ${DEFAULT_OS_USERNAME})
+        -p     OCI-CLI config profile (default: ${DEFAULT_PROFILE})
         -l     Local tcp port (port-forwarding)
+        -s     Subnet ocid (SOCKS5 proxy)
 
         Example:
-        ./quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
-        ./quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
+        quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
+        quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
+        quickbastion.sh -p TENANT3 -l 4444 -s ocid1.subnet.oc1...
 
 ## Example
 

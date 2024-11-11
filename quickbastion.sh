@@ -33,7 +33,7 @@ subnet_id=""
 profile="${DEFAULT_PROFILE}"
 allow_list="${DEFAULT_ALLOW_LIST}"
 fqdn_socks="${DEFAULT_FQDN_SOCKS}"
-http_proxy="${DEFAULT_HTTP_PROXY:-$https_proxy}"
+http_proxy="${https_proxy:-$DEFAULT_HTTP_PROXY}"
 
 # Error handling function
 error_exit() {
@@ -80,6 +80,21 @@ check_dependencies() {
             error_exit "Required dependency '${dep}' is not installed"
         fi
     done
+}
+
+validate_ip() {
+    if [[ $1 =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        IFS="." read -r -a octets <<< "$1"
+        for octet in "${octets[@]}"; do
+            # Convert to integer for proper comparison
+            octet=$((10#$octet))  # Force base 10 conversion
+            if ((octet < 0 || octet > 255)); then
+                return 1
+            fi
+        done
+        return 0
+    fi
+    return 1
 }
 
 generate_ssh_keys() {
@@ -265,8 +280,10 @@ main() {
     # Validate required parameters
     [ -z "${instance_ocid}" ] && [ -z "${instance_ip}" ] && [ -z "${subnet_id}" ] && error_exit "Either instance/subnet OCID or IP must be provided"
     grep -q "\[$profile\]" "$HOME"/.oci/config || error_exit "Profile name cannot be found in ${HOME}/.oci/config"
+    validate_ip "$instance_ip"  || error_exit "IP address is not valid"
 
     # Main workflow
+    
     check_ssh_keys
     check_bastion_plugin
     

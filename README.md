@@ -27,7 +27,7 @@ You need also to have at least the following IAM permissions.
 
 ## Usage
 
-        Usage: quickbastion.sh [-h|i|r|u|p|l] <instance ocid>
+        Usage: quickbastion.sh [-h|i|r|u|p|l|s] <instance ocid>
 
         Options:
         -h     Print this Help

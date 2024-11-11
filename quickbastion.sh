@@ -33,9 +33,7 @@ subnet_id=""
 profile="${DEFAULT_PROFILE}"
 allow_list="${DEFAULT_ALLOW_LIST}"
 fqdn_socks="${DEFAULT_FQDN_SOCKS}"
-http_proxy="${DEFAULT_HTTP_PROXY}"
-
-
+http_proxy="${DEFAULT_HTTP_PROXY:-$https_proxy}"
 
 # Error handling function
 error_exit() {

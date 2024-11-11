@@ -266,9 +266,7 @@ main() {
     
     # Validate required parameters
     [ -z "${instance_ocid}" ] && [ -z "${instance_ip}" ] && [ -z "${subnet_id}" ] && error_exit "Either instance/subnet OCID or IP must be provided"
-    
     grep -q "\[$profile\]" "$HOME"/.oci/config || error_exit "Profile name cannot be found in ${HOME}/.oci/config"
-
 
     # Main workflow
     check_ssh_keys

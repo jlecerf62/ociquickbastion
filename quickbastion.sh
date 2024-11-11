@@ -193,26 +193,7 @@ create_session() {
     echo
     echo "Type the following SSH command to connect to bastion session: "
     echo
-    # if [ $connection_mode = "pfwd" ]; then
-    #     if [ -z "$http_proxy" ]; then
-    #     echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-    #     else
-    #     echo "ssh -i $ssh_private_key -N -L $local_port:$instance_ip:$target_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-    #     fi
-    # elif [ $connection_mode = "socks" ]; then
-    #     if [ -z "$http_proxy" ] ;then
-    #     echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-    #     else
-    #     echo "ssh -i $ssh_private_key -N -D 127.0.0.1:$local_port -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %h %p' -p 22 $bastion_user_name@host.bastion.$region.oci.oraclecloud.com"
-    #     fi
-    # else
-    #     if [ -z "$http_proxy" ]; then
-    #     echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com\" -p 22 $bastion_user_name@$instance_ip"
-    #     else
-    #     echo "ssh -i $ssh_private_key -o ProxyCommand=\"ssh -i $ssh_private_key -W %h:%p -p 22 $session_id@host.bastion.$region.oci.oraclecloud.com -o 'ProxyCommand=nc -X connect -x $http_proxy:80 %%h %%p'\" -p 22 $bastion_user_name@$instance_ip"
-    #     fi
-    # fi
-    # echo
+
 # Define base SSH command
 base_ssh_command="ssh -i $ssh_private_key"
 
@@ -234,7 +215,7 @@ esac
 
 # Add proxy settings if HTTP proxy is set
 if [ -n "$http_proxy" ]; then
-  ssh_command+="$proxy_command_prefix$http_proxy:80 %%h %%p'"
+  ssh_command+="$proxy_command_prefix$http_proxy %h %p'"
 fi
 
 # Append rest of the SSH command

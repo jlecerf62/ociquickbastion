@@ -162,9 +162,10 @@ create_bastion_service() {
         --client-cidr-list "${allow_list}" \
         --dns-proxy-status "${fqdn_socks}" \
         --wait-for-state "SUCCEEDED" \
-        --profile "${profile}" | jq -r '.data.id') || error_exit "Failed to create bastion service"
+        --profile "${profile}" | jq -r '.data.resources[].identifier') || error_exit "Failed to create bastion service"
         
     log "SUCCESS" "Bastion service created successfully"
+    sleep 20 # Wait for the bastion resource to be ready to use
 }
 
 create_session() {
@@ -246,7 +247,7 @@ if [ "$connection_mode" = "socks" ]; then
   echo
   echo "Then you can connect any resources in subnet using IP or FQDN using the following command:"
   echo ""
-  echo "ssh -o 'ProxyCommand=nc -x connect -x 127.0.0.1:$local_port %h %p' -p 22 <username>@<IP or FQDN>:<port>"
+  echo "ssh -o 'ProxyCommand=nc -x connect -x 127.0.0.1:$local_port %h %p' -p <remote_ssh_port> <username>@<IP or FQDN>"
 fi
 echo
 }

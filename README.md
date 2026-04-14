@@ -1,91 +1,86 @@
-# OCI quickbastion
+# qb (Interactive OCI Bastion Helper)
 
-OCI Bastion service can sometimes be difficult and long to setup.
-Here is a small script to automate Bastion session creation.
+A brand-new interactive Python CLI to quickly connect to OCI Compute instances and DB nodes via the OCI Bastion service.
+
+- Discovers resources in the current region (optionally filtered by compartment)
+- Simple numbered prompts with fuzzy filtering
+- Default mode: Port-forwarding (fastest)
+- Optional modes: Managed SSH (Compute only) and SOCKS (dynamic)
+- Can resume existing Bastion sessions
+- Automatically executes the SSH command
 
 ## Requirements
+- Python 3.8+
+- OCI Python SDK: `oci` (installed automatically if you `pip install .`)
+- ssh-keygen available on PATH (for generating keys when missing)
+- IAM permissions matching Bastion, Compute, VCN, Database read/list, and resource search
 
-You need to have OCI-CLI installed and configured on your computer.
+## Install (editable)
 
-You also need to install **jq** package.
+```
+python -m pip install -e .
+```
 
-Or you can use OCI Cloud Shell which already have all the prerequisites.
+Or run without installing using the source tree:
 
-You need also to have at least the following IAM permissions.
+```
+PYTHONPATH=src python -m qb2.cli --help
+```
 
-        Allow group <group> to read virtual-network-family in compartment <compartment>
-        Allow group <group> to read instance-family in compartment <compartment>
-        Allow group <group> to inspect work-requests in tenancy
-        Allow group <group> to inspect compartments in tenancy
-        Allow group <group> to use bastion in compartment <compartment>
-        Allow group <group> to manage bastion-session in compartment <compartment>
-        Allow group <group> to read bastion in compartment <compartment>
+## Usage Examples
 
-## Installation
+Interactive flow (current region; prompt for compartment and target):
 
-        git clone https://github.com/jlecerf62/ociquickbastion.git
+```
+qb
+```
 
-## Usage
+Specify profile:
 
-        Usage: quickbastion.sh [-h|i|r|u|p|l|s] <instance ocid>
+```
+qb --profile MYPROFILE
+```
 
-        Options:
-        -h     Print this Help
-        -i     Instance IP
-        -r     Remote tcp port (port-forwarding)
-        -u     Remote username (default: ${DEFAULT_OS_USERNAME})
-        -p     OCI-CLI config profile (default: ${DEFAULT_PROFILE})
-        -l     Local tcp port (port-forwarding)
-        -s     Subnet ocid (SOCKS5 proxy)
+Limit to a compartment:
 
-        Example:
-        quickbastion.sh -p TENANT1 -u user1 ocid1.instance.oc1...
-        quickbastion.sh -p TENANT2 -l 4443 -r 443 -i 10.0.0.1
-        quickbastion.sh -p TENANT3 -l 4444 -s ocid1.subnet.oc1...
+```
+qb --compartment ocid1.compartment.oc1... --profile MYPROFILE
+```
 
-## Example
+Force a specific mode:
 
-                jerome@cloudshell:ociquickbastion (eu-frankfurt-1)$ ./quickbastion.sh ocid1.instance.oc1.eu-frankfurt-1.xxxxxxxxxxxxxxxxxxxxxxx
-                
-                Searching for SSH key...
-                /home/jerome/.ssh/id_rsa not found
-                
-                Do you want to generate a new RSA keypair ? (Y/N)y
-                Generating public/private rsa key pair.
-                Created directory '/home/jerome/.ssh'.
-                Your identification has been saved in /home/jerome/.ssh/id_rsa.
-                Your public key has been saved in /home/jerome/.ssh/id_rsa.pub.
-                The key fingerprint is:
-                SHA256:0oyKkVXjxxxxxxxxxxxxxx jerome@be0f89axxxx
-                The key's randomart image is:
-                +---[RSA 2048]----+
-                | o..o==.         |
-                |  =ooo.o         |
-                |  o=...          |
-                | .oo= .+         |
-                |. oO Eo.S        |
-                |.xxxxxxxxxx      |
-                | +.@.o ...       |
-                |. B o  ....      |
-                |=o   ..   ..     |
-                +----[SHA256]-----+
+```
+# Port-forwarding (default)
+qb --mode PFWD
 
-                RSA keypair generated
+# Managed SSH (Compute only; requires Bastion agent RUNNING)
+qb --mode SSH
 
-                Detecting Bastion plugin state...
-                Bastion plugin is in RUNNING state on instance instance-20220509-2224.
+# SOCKS dynamic proxy
+qb --mode SOCKS --local-port 1080
+```
 
-                Checking for existing Bastion service...
-                Bastion service not present for this subnet (in subnet compartment).
-                Do you want to create it? (Y/N)y
+Resume an existing session if available:
 
-                Creating Bastion QuickBastionsubnet1... Please wait, it can take up to 2 minutes...
-                Action completed. Waiting until the work request has entered state: ('SUCCEEDED',)
-                
-                Creating session... Please wait, it can take up to 2 minutes...
-                Action completed. Waiting until the work request has entered state: ('SUCCEEDED',)
-                Session has been created. Session Lifetime is 3600 seconds
+```
+qb --resume
+```
 
-                Type the following SSH command to connect instance
+Override OS user and target/ports:
 
-                ssh -i /home/jerome/.ssh/id_rsa -o ProxyCommand="ssh -i /home/jerome/.ssh/id_rsa -W %h:%p -p 22 ocid1.bastionsession.oc1.eu-frankfurt-1.axxxxxxxxxxxxxxxxxxxxxxxx@host.bastion.eu-frankfurt-1.oci.oraclecloud.com" -p 22 opc@192.168.250.10
+```
+qb -u opc --remote-port 22 --local-port 4444
+```
+
+## Notes
+- The tool operates only in the current region of the selected profile.
+- Compartment selection lets you narrow the discovery scope within the region.
+- Managed SSH requires the Bastion plugin (instance agent) in RUNNING state on the Compute instance.
+- When keys are missing, you will be prompted to generate an RSA keypair.
+- HTTP(S) proxy from env (http_proxy/https_proxy) is included in the SSH ProxyCommand when needed.
+
+## Uninstall
+
+```
+pip uninstall ociquickbastion-qb2
+```

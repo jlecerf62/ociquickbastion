@@ -1,2 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv
+venv/
+.envrc
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# IDE
 .vscode/
-qb/
+.idea/
+
+# OS
+.DS_Store

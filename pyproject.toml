@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ociquickbastion-qb2"
+version = "0.1.0"
+description = "Interactive OCI Bastion helper (Compute & DB nodes)"
+authors = [{name = "ociquickbastion"}]
+requires-python = ">=3.8"
+dependencies = [
+  "oci>=2.0.0",
+]
+readme = "README.md"
+
+[project.scripts]
+qb = "qb2.cli:main"
+
+[tool.setuptools]
+packages = ["qb2"]
+package-dir = { "qb2" = "src/qb2" }
+
+[tool.setuptools.package-data]
+qb2 = ["py.typed"]

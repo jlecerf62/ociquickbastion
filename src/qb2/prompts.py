@@ -139,7 +139,7 @@ def choose_ports(mode: SessionMode) -> (Optional[int], Optional[int]):
             return None, None
         return l, r
     if mode == SessionMode.SOCKS:
-        l = read_port("Local port (e.g. 1080) [q to cancel]: ", 1080)
+        l = read_port("Local port (e.g. 3128) [q to cancel]: ", 3128)
         if l is None:
             return None, None
         return l, 22

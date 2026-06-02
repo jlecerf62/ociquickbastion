@@ -7,14 +7,20 @@ name = "ociquickbastion-qb2"
 version = "0.1.0"
 description = "Interactive OCI Bastion helper (Compute & DB nodes)"
 authors = [{name = "ociquickbastion"}]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
   "oci>=2.0.0",
 ]
 readme = "README.md"
 
+[project.optional-dependencies]
+tui = [
+  "textual>=0.89.0",
+]
+
 [project.scripts]
 qb = "qb2.cli:main"
+qb2 = "qb2.cli:main"
 
 [tool.setuptools]
 packages = ["qb2"]

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from typing import List, Tuple, Dict
+from types import SimpleNamespace
+from typing import Any, List, Tuple
 
 import oci
-from oci.core.models import Instance
-from oci.database.models import DbNode
 
-from .types import OciClients, TargetResource, ResourceType
+from .types import OciClients, TargetPrivateIp, TargetResource, ResourceType
 from .util import log
 
 
@@ -28,6 +27,60 @@ def get_compute_private_ip_and_subnet(clients: OciClients, instance_id: str, com
     return vnic.private_ip, vnic.subnet_id, subnet.vcn_id
 
 
+def list_compute_private_ips(clients: OciClients, instance_id: str, compartment_id: str) -> List[TargetPrivateIp]:
+    attachments = oci.pagination.list_call_get_all_results(
+        clients.compute_client.list_vnic_attachments,
+        compartment_id=compartment_id,
+        instance_id=instance_id,
+    ).data
+
+    choices: dict[tuple[str, str], TargetPrivateIp] = {}
+    for attachment in attachments:
+        vnic_id = getattr(attachment, "vnic_id", None)
+        if not vnic_id:
+            continue
+        vnic = clients.vcn_client.get_vnic(vnic_id).data
+        vnic_name = getattr(vnic, "display_name", "") or getattr(attachment, "display_name", "")
+        subnet_id = getattr(vnic, "subnet_id", "")
+        vcn_id = getattr(vnic, "vcn_id", "")
+        private_ips = oci.pagination.list_call_get_all_results(
+            clients.vcn_client.list_private_ips,
+            vnic_id=vnic_id,
+        ).data
+        if not private_ips and getattr(vnic, "private_ip", None):
+            private_ips = [
+                SimpleNamespace(
+                    ip_address=vnic.private_ip,
+                    display_name="",
+                    is_primary=True,
+                )
+            ]
+        for private_ip in private_ips:
+            ip_address = getattr(private_ip, "ip_address", None) or getattr(private_ip, "private_ip", None)
+            if not ip_address:
+                continue
+            choice = TargetPrivateIp(
+                ip_address=ip_address,
+                vnic_id=vnic_id,
+                vnic_name=vnic_name,
+                subnet_id=getattr(private_ip, "subnet_id", None) or subnet_id,
+                vcn_id=vcn_id,
+                display_name=getattr(private_ip, "display_name", "") or "",
+                is_primary=bool(getattr(private_ip, "is_primary", False)),
+            )
+            choices[(vnic_id, ip_address)] = choice
+
+    return sorted(
+        choices.values(),
+        key=lambda choice: (
+            not choice.is_primary,
+            choice.vnic_name.casefold(),
+            choice.vnic_name,
+            choice.ip_address,
+        ),
+    )
+
+
 def list_compute_targets(
     clients: OciClients,
     compartment_id: str,
@@ -42,7 +95,7 @@ def list_compute_targets(
         include_states = {"RUNNING", "STOPPED"}
 
     try:
-        instances: List[Instance] = oci.pagination.list_call_get_all_results(
+        instances: List[Any] = oci.pagination.list_call_get_all_results(
             clients.compute_client.list_instances,
             compartment_id,
         ).data
@@ -95,7 +148,7 @@ def list_dbnode_targets(
     if include_states is None or not include_states:
         include_states = {"AVAILABLE", "STOPPED"}
 
-    nodes: List[DbNode] = []
+    nodes: List[Any] = []
 
     # DB Systems -> DbNodes
     try:

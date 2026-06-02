@@ -1,10 +1,20 @@
 import sys
 import subprocess
-from typing import Iterable, List
+from typing import Callable, Iterable, List, Optional
 from difflib import get_close_matches
+
+_log_sink: Optional[Callable[[str, str], None]] = None
+
+
+def set_log_sink(sink: Optional[Callable[[str, str], None]]) -> None:
+    global _log_sink
+    _log_sink = sink
 
 
 def log(level: str, msg: str) -> None:
+    if _log_sink is not None:
+        _log_sink(level, msg)
+        return
     print(f"[{level}] {msg}")
 
 

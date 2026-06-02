@@ -1,24 +1,34 @@
 from __future__ import annotations
 
 import os
+import socket
 import subprocess
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from .util import error_exit
 
 
-def ensure_ssh_keys(private_key: str, public_key: str) -> None:
+def _confirm_generate_ssh_key() -> bool:
+    try:
+        reply = input("Do you want to generate a new RSA keypair? (Y/N) ").strip().lower()
+    except EOFError:
+        reply = "n"
+    return reply.startswith("y")
+
+
+def ensure_ssh_keys(
+    private_key: str,
+    public_key: str,
+    confirm_generate: Optional[Callable[[], bool]] = None,
+) -> None:
     pk = Path(private_key)
     pub = Path(public_key)
     if pk.exists() and pub.exists():
         return
     print(f"[WARNING] {private_key} not found")
-    try:
-        reply = input("Do you want to generate a new RSA keypair? (Y/N) ").strip().lower()
-    except EOFError:
-        reply = "n"
-    if not reply.startswith("y"):
+    should_generate = confirm_generate() if confirm_generate is not None else _confirm_generate_ssh_key()
+    if not should_generate:
         error_exit("SSH keys are required but not found")
     pk.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -36,6 +46,53 @@ def get_http_proxy_from_env() -> Optional[str]:
 
 def _proxy_nc_opt(http_proxy: Optional[str]) -> str:
     return f"-o 'ProxyCommand=nc -X connect -x {http_proxy} %h %p'" if http_proxy else ""
+
+
+def find_available_local_port(preferred: int, scan_start: int, scan_end: int) -> int:
+    if scan_start > scan_end:
+        raise ValueError("scan_start must be <= scan_end")
+
+    def _is_free(port: int) -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                s.bind(("127.0.0.1", port))
+                return True
+            except OSError:
+                return False
+
+    if _is_free(preferred):
+        return preferred
+
+    for port in range(scan_start, scan_end + 1):
+        if port == preferred:
+            continue
+        if _is_free(port):
+            return port
+    raise RuntimeError(f"No available local port found in range {scan_start}-{scan_end}")
+
+
+def resolve_local_port(mode: str, requested: Optional[str], preferred_default: int) -> int:
+    if mode not in ("PFWD", "SOCKS"):
+        raise ValueError("resolve_local_port is only valid for PFWD/SOCKS modes")
+
+    scan_start = 1024
+    scan_end = 65535
+
+    if requested is None or requested == "":
+        return find_available_local_port(preferred_default, scan_start, scan_end)
+
+    normalized = requested.strip().lower()
+    if normalized == "auto":
+        return find_available_local_port(preferred_default, scan_start, scan_end)
+
+    if not normalized.isdigit():
+        raise ValueError("local-port must be an integer 1..65535 or 'auto'")
+
+    port = int(normalized)
+    if not 1 <= port <= 65535:
+        raise ValueError("local-port must be between 1 and 65535")
+    return port
 
 
 def build_ssh_command(

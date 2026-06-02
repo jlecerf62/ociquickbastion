@@ -16,6 +16,12 @@ class SessionMode(Enum):
     SOCKS = "SOCKS"  # Dynamic port forwarding
 
 
+class AllowListMode(Enum):
+    MERGE = "merge"
+    STRICT = "strict"
+    PROMPT = "prompt"
+
+
 @dataclass
 class TargetResource:
     ocid: str
@@ -30,6 +36,17 @@ class TargetResource:
     state: str
     default_os_user: str = "opc"
     agent_status: Optional[str] = None  # e.g., RUNNING (for managed SSH)
+
+
+@dataclass
+class TargetPrivateIp:
+    ip_address: str
+    vnic_id: str
+    vnic_name: str
+    subnet_id: str
+    vcn_id: str
+    display_name: str
+    is_primary: bool
 
 
 @dataclass
@@ -63,3 +80,27 @@ class SessionDescriptor:
     target_private_ip: Optional[str] = None
     target_port: Optional[int] = None
     target_os_user: Optional[str] = None
+
+
+@dataclass
+class LocalPortRequest:
+    mode: SessionMode
+    requested: Optional[int]
+    auto: bool
+    resolved: Optional[int]
+
+
+@dataclass
+class LocalSessionRecord:
+    session_id: str
+    target_ocid: Optional[str]
+    target_name: str
+    target_private_ip: Optional[str]
+    mode: SessionMode
+    region: str
+    local_port: Optional[int]
+    remote_port: Optional[int]
+    os_user: Optional[str]
+    created_at_utc: str
+    last_used_at_utc: str
+    status_hint: str

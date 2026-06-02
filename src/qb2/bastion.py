@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import oci
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
-from .types import OciClients, BastionSelection, SessionDescriptor, SessionMode
+from .types import OciClients, BastionSelection, SessionDescriptor, SessionMode, AllowListMode
 from .util import log
 
 
@@ -178,6 +178,36 @@ class BastionManager:
             target_private_ip=target_ip,
             target_port=target_port_value,
             target_os_user=target_os_user,
+        )
+
+    def get_bastion_details(self, bastion_id: str) -> Any:
+        return self.clients.bastion_client.get_bastion(bastion_id).data
+
+    def reconcile_allow_list(self, bastion_id: str, current_ip_cidr: str, mode: AllowListMode) -> List[str]:
+        bastion = self.get_bastion_details(bastion_id)
+        existing = list(getattr(bastion, "client_cidr_block_allow_list", []) or [])
+
+        if mode == AllowListMode.STRICT:
+            return [current_ip_cidr]
+
+        desired = list(existing)
+        if current_ip_cidr not in desired:
+            desired.append(current_ip_cidr)
+        # De-duplicate while preserving order
+        return list(dict.fromkeys(desired))
+
+    def update_allow_list(self, bastion_id: str, cidrs: List[str]) -> None:
+        client = self.clients.bastion_client
+        details = oci.bastion.models.UpdateBastionDetails(
+            client_cidr_block_allow_list=cidrs,
+        )
+        client.update_bastion(bastion_id, details)
+        oci.wait_until(
+            client,
+            client.get_bastion(bastion_id),
+            "lifecycle_state",
+            "ACTIVE",
+            max_wait_seconds=180,
         )
 
 
